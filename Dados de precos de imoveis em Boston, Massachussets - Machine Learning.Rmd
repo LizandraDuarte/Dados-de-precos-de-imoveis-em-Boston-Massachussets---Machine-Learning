@@ -1,0 +1,179 @@
+---
+title: ' Dados de precos de imoveis em Boston, Massachussets, EUA'
+author: "Lizandra Duarte"
+date: "2022-11-17"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+#  Baseado em: Chapter 2 - Introduction to Neural Networks - using R 
+#  Simple R program to build, train, test regression neural networks#
+
+```{r}
+library("neuralnet")
+library(MASS)       # pacote necessario para ler os dados de Boston
+```
+
+# Lendo os dados
+#==========================================================================
+```{r}
+data = Boston
+head(data)
+class(data)
+```
+# Transformando ou re-escalonando os dados
+#==========================================================================
+```{r}
+max_data <- apply(data, 2, max) # <== vetor linha com mÃ¡ximos das colunas
+min_data <- apply(data, 2, min) # <== vetor linha com mÃ­nimos das colunas
+data_scaled <- scale(data,center = min_data, scale = max_data - min_data) 
+head(data_scaled)
+```
+
+# Embaralhando os dados e separando em subconjuntos de:
+#
+#   - Treinamento (70%)
+#   - Teste (30%)
+```{r}
+set.seed(10) #fixa a semente para embaralhar aleatoriamente os dados
+index = sample(1:nrow(data),round(0.70*nrow(data)))
+train_data <- as.data.frame(data_scaled[index,])
+test_data <- as.data.frame(data_scaled[-index,])
+```
+
+# Vendo os dados de treinamento e teste
+```{r}
+head(train_data, n = 10)
+head(test_data, n = 10)
+```
+# configurando e executando a RNA
+#   - Uma camada interna com 10 neuronios
+#==========================================================================
+```{r}
+n = names(data)
+f = as.formula(paste("medv ~", paste(n[!n %in% "medv"], collapse = " + ")))
+set.seed(1) # fixa a semente para inicializar os pesos da rede
+net_data = neuralnet(f,
+                     data = train_data,
+                     hidden = c(5),
+                     linear.output=T)
+```
+#==========================================================================
+
+# Grafico da RNA treinada
+#==========================================================================
+```{r}
+plot(net_data)
+```
+
+
+```{r}
+net_data$result.matrix[1]
+```
+# numero de passos
+```{r}
+net_data$result.matrix[3]
+```
+# EQM (MSE) no treinamento (com dados transformados)
+```{r}
+predict_net_train <-  net_data$net.result[[1]]
+err <- train_data[,"medv"] - predict_net_train
+sse <- sum(err^2)
+MSE.net_tr.scaled <- sse/length(train_data[,"medv"])
+MSE.net_tr.scaled
+```
+#==========================================================================
+# Prevendo no conjunto de teste com a RNA treinada
+#==========================================================================
+```{r}
+predict_net_test <- compute(net_data,test_data[,1:13])
+```
+
+# vendo um pouco da saida desejada e da previsao
+```{r}
+head(cbind(test_data[,14],predict_net_test$net.result))
+```
+# Computando performance da RNA no conjunto de teste
+# (porem na escala original, i.e. dos dados nao-transformados)
+# - Erro quadratico medio (MSE - indicador de performance)
+#==========================================================================
+# primeiro, de-escalonando
+```{r}
+predict_net_train_start <- predict_net_train * 
+        (max(data$medv) - min(data$medv)) + min(data$medv)
+
+predict_net_test_start <- predict_net_test$net.result *
+        (max(data$medv) - min(data$medv)) + min(data$medv)
+test_start <- as.data.frame((test_data$medv) *
+        (max(data$medv) - min(data$medv)) + min(data$medv))
+
+```
+
+# segundo, computando o EQM (MSE)
+```{r}
+MSE.net_train <- sum((data[index,"medv"] - predict_net_train_start)^2) /
+        nrow(train_data)
+MSE.net_test <- sum((test_start - predict_net_test_start)^2) /
+        nrow(test_start)
+
+```
+# terceiro, plotando
+```{r}
+yy <- unlist(test_start)
+yh <- predict_net_test_start
+plot(yh,yy, main = "Modelo RNA: Realizado x Previsto", col = "blue")
+```
+#==========================================================================
+
+# Estimando modelo de regressao linear para comparacao
+#==========================================================================
+```{r}
+Regression_Model <- lm(medv ~. , data = data[index,])
+summary(Regression_Model)
+medv.hat <- Regression_Model$fitted.values
+```
+
+
+# EQM do modelo de regressao linear no treinamento
+```{r}
+MSE.lm_train <- sum((data[index,"medv"] - medv.hat)^2)/nrow(train_data)
+```
+
+
+# Prevendo no conjunto de teste com o MRL estimado
+#==========================================================================
+```{r}
+test <- data[-index,]
+predict_lm <- predict(Regression_Model,test)
+```
+
+
+# plotando
+```{r}
+zz <- unlist(test$medv)
+zh <- predict_lm
+plot(zh,zz, main = "Modelo de Regressao: Realizado x Previsto", col = "red")
+```
+
+
+
+# EQM do modelo de regressao linear no teste
+```{r}
+MSE.lm_test <- sum((predict_lm - test$medv)^2)/nrow(test) 
+```
+
+
+# Comparando as performances da RNA e do MRL
+#==========================================================================
+```{r}
+noquote("Treinamento")
+print(paste("RNA","    Regressao"))
+print(c(MSE.net_train,MSE.lm_train))
+print("         ")
+print("Teste")
+print(paste("RNA","    Regressao"))
+print(c(MSE.net_test,MSE.lm_test))
+```
+
+#===FIM====================================================================
